@@ -49,7 +49,7 @@ async def create_user(user: User, username: Annotated[str, Depends(get_current_u
     use = make_user(user.email, user.is_leader, user.role, user.leading, user.joined_clubs)
     user_id = get_el_id("Users", user.email)
     coll_id = get_collection_id("Users", user_id)
-    add_id = add_redis_collection_id("Users", coll_id, user_id=user_id)
+    add_id = add_redis_collection_id("Users", coll_id, user_id=user_id) 
     return use
 
 @router.post("/updateuser/")
