@@ -7,13 +7,14 @@ load_dotenv()
 
 redis = Redis(url=os.environ.get("REDIS_URL"), token=os.environ.get("REDIS_TOKEN"))
 
+
 def format_json(docs):
     results = []
     for key, value in docs.items():
         # Decode the key and value if they are bytes
-        key_str = key.decode('utf-8') if isinstance(key, bytes) else key
-        value_str = value.decode('utf-8') if isinstance(value, bytes) else value
-        
+        key_str = key.decode("utf-8") if isinstance(key, bytes) else key
+        value_str = value.decode("utf-8") if isinstance(value, bytes) else value
+
         # If value_str is a valid JSON string, load it into a Python dictionary
         try:
             # Try to parse the value as JSON
@@ -34,6 +35,7 @@ def format_json(docs):
 
     return json_results
 
+
 def get_redis_cached_data(collection):
     try:
         docs = redis.hgetall(collection)  # Get field data from hash
@@ -44,8 +46,9 @@ def get_redis_cached_data(collection):
         print(f"Redis error: {e}")
         return None
 
+
 # Function to set data in a Redis hash
-def set_redis_cached_data(collection, data, expiry = 3600):
+def set_redis_cached_data(collection, data, expiry=3600):
     try:
         data = json.loads(data)
         for d in data:
@@ -58,6 +61,7 @@ def set_redis_cached_data(collection, data, expiry = 3600):
         print(f"Redis error: {e}")
         return {"status": -1, "error_message": e}
 
+
 def check_upstash_usage():
     """
     Fetch and check Upstash Redis usage limits.
@@ -66,22 +70,25 @@ def check_upstash_usage():
         dict: Usage details including memory, bandwidth, and keys.
     """
     # Replace with your Upstash Redis REST URL and token
-    upstash_url = os.getenv("REDIS_URL")  # e.g., "https://<your-instance>.upstash.io/usage"
+    upstash_url = os.getenv(
+        "REDIS_URL"
+    )  # e.g., "https://<your-instance>.upstash.io/usage"
     rest_token = os.getenv("REDIS_TOKEN")  # Your Upstash REST token
 
     if not upstash_url or not rest_token:
         return {"error": "Upstash URL or REST token is missing."}
 
     headers = {"Authorization": f"Bearer {rest_token}"}
-    
+
     try:
         response = requests.get(upstash_url, headers=headers)
         response.raise_for_status()  # Raise an error for non-200 responses
         usage_data = response.json()
         return usage_data
-    
+
     except requests.exceptions.RequestException as e:
         return {"error": str(e)}
+
 
 def get_redis_collection(collection):
     try:
@@ -92,13 +99,14 @@ def get_redis_collection(collection):
 
             return {"status": 0, "results": json_results}
 
-        else: # If the redis is not updated
-            return {"status": -3, "error_message": "redis is empty"} 
-        
+        else:  # If the redis is not updated
+            return {"status": -3, "error_message": "redis is empty"}
+
     except Exception as e:
         print(f"Error getting collection: {e}")
         return {"status": -1, "error_message": f"Failed to check redis: {e}"}
-    
+
+
 def get_redis_collection_id(collection, target_id):
     try:
         target_val = redis.hmget(collection, target_id)
@@ -107,8 +115,12 @@ def get_redis_collection_id(collection, target_id):
         else:
             return {"status": -4, "error_message": "Collection id not found"}
     except Exception as e:
-        return {"status": -1, "error_message": f"Failed to get redis collection id: {e}"}
-    
+        return {
+            "status": -1,
+            "error_message": f"Failed to get redis collection id: {e}",
+        }
+
+
 def add_redis_collection(collection):
     try:
         new_coll = get_collection_python(collection)
@@ -118,24 +130,34 @@ def add_redis_collection(collection):
             redis.hset(collection, doc_id, new_data)
         return {"status": 0, "collection": get_collection(collection)}
     except Exception as e:
-        return {"status": -1, "error_message": f"Failed to add collection to redis: {e}"}
-    
-def add_redis_collection_id(collection, data, club_id="", mentor_id="", pml_id="", user_id=""):
+        return {
+            "status": -1,
+            "error_message": f"Failed to add collection to redis: {e}",
+        }
+
+
+def add_redis_collection_id(
+    collection, data, club_id="", mentor_id="", pml_id="", user_id=""
+):
     try:
-        if len(club_id) > 1: 
+        if len(club_id) > 1:
             redis.hset(collection, club_id, data)
         elif len(mentor_id) > 1:
             redis.hset(collection, mentor_id, data)
         elif len(pml_id) > 1:
-            redis.hset(collection, pml_id, data)  
+            redis.hset(collection, pml_id, data)
         elif len(user_id) > 1:
-            redis.hset(collection, user_id, data)      
-        else: 
+            redis.hset(collection, user_id, data)
+        else:
             redis.hset(collection, data["id"], data)
         return {"status": 0}
     except Exception as e:
-        return {"status": -1, "error_message": f"Failed to add redis collection id: {e}"}
-    
+        return {
+            "status": -1,
+            "error_message": f"Failed to add redis collection id: {e}",
+        }
+
+
 def delete_redis_data(collection, id):
     try:
         delete = redis.hdel(collection, id)
@@ -145,11 +167,15 @@ def delete_redis_data(collection, id):
             return {"status": -5, "error_message": "No redis field found to delete"}
     except Exception as e:
         return {"status": -1, "error_message": e}
-    
+
+
 def delete_redis_id(collection, delete_id):
     try:
         redis.hdel(collection, delete_id)
         return {"status": 0}
     except Exception as e:
         print(e)
-        return {"status": -1, "error_message": f"Failed to delete redis collection id: {e}"}
+        return {
+            "status": -1,
+            "error_message": f"Failed to delete redis collection id: {e}",
+        }
