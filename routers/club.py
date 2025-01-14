@@ -141,13 +141,13 @@ Thank you, and if there are any problems, send me an email @25ranjaria@cpsd.us
 """
         try:
             send_mail(receiver, subject, body)
-            print("Sent mail")
+            # print("Sent mail")
         except Exception as e:
-            print(f"Failed to send mail: {e}")
-            return {"status": f"Failed to send mail: {e}"}
-        return {"status": "Successfully created club"}
+            # print(f"Failed to send mail: {e}")
+            return {"status": -16, "error_message": e}
+        return {"status": 17}
     except Exception as e:
-        return {"status": f"Failed to create club: {e}"}
+        return {"status": -17, "error_message": e}
 
 
 @router.post("/updateclub/")
@@ -172,10 +172,10 @@ async def update_club(
         coll_id = get_collection_id("Clubs", club_id)
         add_id = add_redis_collection_id("Clubs", coll_id, club_id=club_id)
         if add_id["status"] == 0:
-            return {"status": "Successfully edited club"}
-        return {"status": f"Failed to update club redis: {add_id["error_message"]}"}
+            return {"status": 18}
+        return {"status": -18.1}
     except Exception as e:
-        return {"status": f"Failed to edit club: {e}"}
+        return {"status": -18, "error_message": e}
 
 
 class ChangeStatus(BaseModel):
@@ -192,9 +192,9 @@ def change_status(
         club_id = get_el_id("Clubs", change_status.secret_password)
         coll_id = get_collection_id("Clubs", club_id)
         add_id = add_redis_collection_id("Clubs", coll_id, club_id=club_id)
-        return {"status": "Successfully changed status"}
+        return {"status": 19}
     except Exception as e:
-        return {"status": f"Failed to change status: {e}"}
+        return {"status": -19}
 
 
 @router.get("/deleteclub/{club_id}")
@@ -213,11 +213,11 @@ def delete_club(club_id: str, username: Annotated[str, Depends(get_current_usern
             #             join_leave_club("leave", u["email"], club_id)
             #         else:
             #             print("61 - Not found")
-            return {"status": "Successfully deleted club"}
-        return {"status": f"Failed to delete club redis: {del_id["error_message"]}"}
+            return {"status": 20}
+        return {"status": -20.1}
 
     except Exception as e:
-        return {"status": f"Failed to delete club: {e}"}
+        return {"status": -20, "error_message": e}
 
 
 class VerifyClub(BaseModel):
@@ -230,11 +230,9 @@ def verify_club(
 ):
     try:
         status = verify_club_model(verify.secret_password)
-        # print()
-        return status
+        return {"status": 21}
     except Exception as e:
-        print(f"Club verification failed: {e}")
-        return {"status": "Failed", "error": e}
+        return {"status": -21, "error_message": e}
 
 
 @router.post("/uploadclubimage/")
@@ -253,19 +251,14 @@ async def upload_image(
             "image/gif",
             "image/webp",
         ]:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid file type. Only JPEG, JPG, PNG, WEBP, and GIF are allowed.",
-            )
+            return {"status": -22.1}
         if old_file_name:
             delete_club_image(old_file_name)
 
         img_url = upload_club_image(file)
-        print(f"successfully uploaded club img: {img_url}")
-        return {"status": img_url}
+        return {"status": 22}
     except Exception as e:
-        print(f"Failed: {e}")
-        return {"status": "Failed"}
+        return {"status": -22}
 
 
 class SetClubImg(BaseModel):
@@ -282,7 +275,6 @@ async def set_club_img(
         set_club_image_doc(upload.club_id, upload.img_url, upload.old_id)
         coll_id = get_collection_id("Clubs", upload.club_id)
         add_id = add_redis_collection_id("Clubs", coll_id, club_id=upload.club_id)
-        return {"status": "Successfully updated club img doc"}
+        return {"status": 23}
     else:
-        print("Failed to update club img doc.")
-        return {"status": "Failed to update club img doc."}
+        return {"status": -23}
