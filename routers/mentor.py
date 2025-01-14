@@ -1,5 +1,11 @@
+import datetime
+import os
+import secrets
+import uuid
+from typing import List, Optional, Annotated
+
+from dotenv import load_dotenv
 from fastapi import (
-    FastAPI,
     File,
     UploadFile,
     Depends,
@@ -9,9 +15,8 @@ from fastapi import (
     Form,
 )
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-import secrets
 from pydantic import BaseModel
-from typing import List, Optional, Annotated
+
 from models.mentormodel import (
     make_mentor,
     change_mentor,
@@ -19,23 +24,59 @@ from models.mentormodel import (
     upload_mentor_image,
     set_mentor_image_doc,
     show_or_hide_mentor,
-    update_mentor_hours,
     update_hours_worked_catalog,
     confirm_mentor_mentee_logging,
     delete_mentor_image,
     get_mentor_description,
 )
-from models.usermodel import update_mentee_catalog
 from models.model import get_el_id, get_collection_id
 from models.redismodel import add_redis_collection_id, delete_redis_id
+from models.usermodel import update_mentee_catalog
 from sendmail import send_mail
-import uuid, os, datetime
-from dotenv import load_dotenv
 
 load_dotenv()
 curr_url = os.environ.get("CURR_URL")
 
 security = HTTPBasic()
+router = APIRouter(tags=["mentor"])
+
+
+class Mentor(BaseModel):
+    firstname: str
+    lastname: str
+    bio: str
+    email: str
+    races: List[str]
+    religions: List[str]
+    gender: List[str]  # Change to just a string later
+    languages: List[str]
+    academics: List[str]
+
+
+class SetMentorImg(BaseModel):
+    img_url: str
+    mentor_email: str
+
+
+class MentorPitch(BaseModel):
+    mentor_email: str
+    pitch: str
+
+
+class MentorMenteeLog(BaseModel):
+    mentor_email: str
+    mentee_email: str
+    log_description: str
+    log_hours: str
+
+
+class MenteeConfirmHours(BaseModel):
+    confirm: int
+    catalog_id: str
+    mentee_email: str
+    mentor_email: str
+    mentee_hours: str
+    mentee_description: str
 
 
 def get_current_username(
@@ -60,25 +101,8 @@ def get_current_username(
     return credentials.username
 
 
-router = APIRouter(tags=["mentor"])
-
-
-class Mentor(BaseModel):
-    firstname: str
-    lastname: str
-    bio: str
-    email: str
-    races: List[str]
-    religions: List[str]
-    gender: List[str]  # Change to just a string later
-    languages: List[str]
-    academics: List[str]
-
-
 @router.post("/creatementor/")
-async def create_mentor(
-    mentor: Mentor, username: Annotated[str, Depends(get_current_username)]
-):
+async def create_mentor(mentor: Mentor):
     try:
         print("create mentor start")
         make_mentor(
@@ -97,16 +121,14 @@ async def create_mentor(
         add_id = add_redis_collection_id("Mentors", coll_id, mentor_id=mentor_id)
         print(add_id)
         if add_id["status"] == 0:
-            return {"status": "Successfully edited mentor"}
-        return {"status": f"Failed to update mentor redis: {add_id["error_message"]}"}
+            return {"status": 2}
+        return {"status": -2.1}
     except Exception as e:
-        return {"status": f"Failed to create mentor: {e}"}
+        return {"status": -2, "error_message": e}
 
 
 @router.post("/updatementor/")
-async def update_mentor(
-    mentor: Mentor, username: Annotated[str, Depends(get_current_username)]
-):
+async def update_mentor(mentor: Mentor):
     try:
         change_mentor(
             mentor.firstname,
@@ -123,24 +145,21 @@ async def update_mentor(
         coll_id = get_collection_id("Mentors", mentor_id)
         add_id = add_redis_collection_id("Mentors", coll_id, mentor_id=mentor_id)
         if add_id["status"] == 0:
-            return {"status": "Successfully edited mentor"}
+            return {"status": 3}
     except Exception as e:
-        return {"status": f"Failed to edit mentor: {e}"}
+        return {"status": -3, "error_message": e}
 
 
 @router.get("/deletementor/{email}")
-async def delete_mentor(
-    email: str, username: Annotated[str, Depends(get_current_username)]
-):
+async def delete_mentor(email: str):
     try:
         mentor_id = get_el_id("Mentors", email)
         del_id = delete_redis_id("Mentors", mentor_id)
         if del_id["status"] == 0:
             remove_mentor(email)
-            return {"Status": "Successfully deleted mentor"}
-        return {"status": f"Failed to delete pml redis: {del_id["error_message"]}"}
+            return {"status": 4}
     except Exception as e:
-        return {"status": f"Failed to delete mentor: {e}"}
+        return {"status": -4, "error_message": e}
 
 
 # Make router that accepts deleted image and calls the function to delete the image in mentormodel.py
@@ -154,7 +173,6 @@ def delete_img(old_url: str):
 
 @router.post("/uploadmentorimage/")
 async def upload_image(
-    username: Annotated[str, Depends(get_current_username)],
     file: UploadFile = File(...),
     old_file_name: Optional[str] = Form(None),
 ):
@@ -168,50 +186,31 @@ async def upload_image(
             "image/gif",
             "image/webp",
         ]:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid file type. Only JPEG, JPG, PNG, WEBP, and GIF are allowed.",
-            )
+            return {"status": -5.1}
         if old_file_name:
             delete_mentor_image(old_file_name)
 
-        img_url = upload_mentor_image(file)
-        print(f"successfully uploaded mentor img: {img_url}")
-        return {"status": img_url}
+        upload_mentor_image(file)
+        return {"status": 5}
     except Exception as e:
-        print(f"Failed: {e}")
-        return {"status": "Failed"}
-
-
-class SetClubImg(BaseModel):
-    img_url: str
-    mentor_email: str
+        return {"status": -5, "error_message": e}
 
 
 @router.post("/setmentorimg/")
-async def set_club_img(
-    upload: SetClubImg, username: Annotated[str, Depends(get_current_username)]
-):
+async def set_mentor_img(upload: SetMentorImg):
     if upload.img_url != "Failed":
         set_mentor_image_doc(upload.mentor_email, upload.img_url)
         mentor_id = get_el_id("Mentors", upload.mentor_email)
         coll_id = get_collection_id("Mentors", mentor_id)
-        add_id = add_redis_collection_id("Mentors", coll_id, mentor_id=mentor_id)
-        return {"status": "Successfully updated mentor img doc"}
+        add_redis_collection_id("Mentors", coll_id, mentor_id=mentor_id)
+
+        return {"status": 6}
     else:
-        print("Failed to update mentor img doc.")
-        return {"status": "Failed to update mentor img doc."}
-
-
-class MentorPitch(BaseModel):
-    mentor_email: str
-    pitch: str
+        return {"status": -6}
 
 
 @router.post("/sendmentorpitch/")
-async def send_mentor_pitch(
-    mentor_pitch: MentorPitch, username: Annotated[str, Depends(get_current_username)]
-):
+async def send_mentor_pitch(mentor_pitch: MentorPitch):
     receiver = "crlspathfinders25@gmail.com"
     subject = f"Mentor pitch from {mentor_pitch.mentor_email}"
     body = f"""Mentor pitch received from {mentor_pitch.mentor_email}
@@ -221,24 +220,13 @@ Pitch:
     """
     try:
         send_mail(receiver, subject, body)
-        print("Sent mentor pitch mail")
-        return {"status": "Sent mentor pitch mail"}
+        return {"status": 7}
     except Exception as e:
-        print(f"Failed to send mentor pitch email: {e}")
-        return {"status": f"Failed to send mentor pitch email: {e}"}
-
-
-class MentorMenteeLog(BaseModel):
-    mentor_email: str
-    mentee_email: str
-    log_description: str
-    log_hours: str
+        return {"status": -7, "error_message": e}
 
 
 @router.post("/mentormenteelogs/")
-def log_mentor_mentee(
-    log: MentorMenteeLog, username: Annotated[str, Depends(get_current_username)]
-):
+def log_mentor_mentee(log: MentorMenteeLog):
     print("started mentormentee logs")
     # Send crlspathfinders25 the log, send mentor the confirmation, and send mentee the confirmation.
     try:
@@ -255,15 +243,16 @@ Description: {log.log_description}
 Hours: {log.log_hours}
 """
         send_mail(receiver, subject, body)
-        print("sent cp email")
+        # print("sent cp email")
 
         # Send email to mentor:
         receiver = log.mentor_email
         subject = "Confirmation of Mentor-Mentee Logging Form"
         body = f"""Hello,
 
-You have successfully logged your hours. The CRLS PathFinders team has recieved your hours, and a confirmation email has been sent to your mentee, {log.mentee_email}. Once they have confirmed that the hours are correct, your hours will be logged and you can receieve community service hours for your work.
+You have successfully logged your hours. The CRLS PathFinders team has received your hours, and a confirmation email has been sent to your mentee, {log.mentee_email}. Once they have confirmed that the hours are correct, your hours will be logged and you can receive community service hours for your work.
 Below are your responses. To change anything, please send an email to crlspathfinders25@gmail.com or just fill out a new form.
+
 Mentee: {log.mentee_email}
 
 Description: {log.log_description}
@@ -276,7 +265,7 @@ Rehaan Anjaria '25
 Abel Asefaw '25
 """
         send_mail(receiver, subject, body)
-        print("sent mentor email")
+        # print("sent mentor email")
 
         # Update mentor total_hours_worked
         # try:
@@ -288,7 +277,8 @@ Abel Asefaw '25
         # Update catalog data:
         try:
             date = datetime.date.today()
-            status = -1  # -1 means mentee not confirmed, 0 means mentee confirmed.
+            confirm_status = -1
+            # -1 means mentee not confirmed, 0 means mentee confirmed.
             update_hours_worked_catalog(
                 catalog_id,
                 log.mentor_email,
@@ -296,14 +286,15 @@ Abel Asefaw '25
                 log.log_description,
                 log.log_hours,
                 date,
-                status,
+                confirm_status,
             )
             mentor_id = get_el_id("Mentors", log.mentor_email)
             coll_id = get_collection_id("Mentors", mentor_id)
-            add_id = add_redis_collection_id("Mentors", coll_id, mentor_id=mentor_id)
-            print("Successfully updated mentor hours")
-        except Exception as e:
-            print(f"Failed to update mentor catalog: {e}")
+            add_redis_collection_id("Mentors", coll_id, mentor_id=mentor_id)
+            # print("Successfully updated mentor hours")
+        except Exception:
+            pass
+            # print(f"Failed to update mentor catalog: {e}")
 
         # Send email to mentee:
         receiver = log.mentee_email
@@ -325,33 +316,21 @@ Abel Asefaw '25
 """
 
         send_mail(receiver, subject, body)
-        print("sent mentee email")
-        return {"status": "Successfully send logging email"}
+        # print("sent mentee email")
+        return {"status": 8}
     except Exception as e:
-        print(f"Failed to send logging email: {e}")
-        return {"status": f"Failed to send logging email: {e}"}
+        # print(f"Failed to send logging email: {e}")
+        return {"status": -8, "error_message": e}
 
 
 @router.get("/toggleshowmentor/{mentor_email}/")
-def toggle_show_mentor(
-    mentor_email: str, username: Annotated[str, Depends(get_current_username)]
-):
+def toggle_show_mentor(mentor_email: str):
     return show_or_hide_mentor(mentor_email)
-
-
-class MenteeConfirmHours(BaseModel):
-    confirm: int
-    catalog_id: str
-    mentee_email: str
-    mentor_email: str
-    mentee_hours: str
-    mentee_description: str
 
 
 @router.post("/menteeconfirmhours/")
 def mentee_confirm_hours(
     mentee_log: MenteeConfirmHours,
-    username: Annotated[str, Depends(get_current_username)],
 ):
     confirm = mentee_log.confirm
     catalog_id = mentee_log.catalog_id
@@ -359,7 +338,7 @@ def mentee_confirm_hours(
     mentor_email = mentee_log.mentor_email
     mentee_hours = mentee_log.mentee_hours
     mentee_description = mentee_log.mentee_description
-    print(mentee_log)
+    # print(mentee_log)
     # First check if confirm is True
     # If true, first change mentee is_mentor to True, and update their mentee logs with their own description, timestamp, hours worked, and with which mentor they worked.
     # Then, update mentor logs.
@@ -391,26 +370,19 @@ def mentee_confirm_hours(
             add_id = add_redis_collection_id("Mentors", coll_id, mentor_id=mentor_id)
             print(add_id)
         elif log_status["status"] == -2:  # Mismatching hours:
-            print("hours do not match confirmed")
-            return {"status": -2, "error_message": "Hours do not match."}
+            # print("hours do not match confirmed")
+            return {"status": -9.1}
         else:
-            print(
-                f"Failed to confirm mentor mentee logging: {log_status["error_message"]}"
-            )
-            return {
-                "status": -1,
-                "error_message": f"Failed to confirm mentor mentee logging: {log_status["error_message"]}",
-            }
+            # print(f"Failed to confirm mentor mentee logging: {log_status["error_message"]}")
+            return {"status": -1}
 
-        # If go to here, that means all has worked. Now send confirmation email to crlspathfinders25@gmail.com:
+        # If we get to here, that means all has worked. Now send confirmation email to crlspathfinders25@gmail.com:
         receiver = "crlspathfinders25@gmail.com"
         subject = f"{mentee_email} Confirmation Successful"
         mentor_description = get_mentor_description(mentor_email, catalog_id)
         if mentor_description["status"] == -1:
-            return {
-                "status": -1,
-                "error_message": "Matching mentor description could not be found. Contact support.",
-            }
+            return {"status": -9.2}
+
         mentor_description = mentor_description["desc"]
         body = f"""As of {date_confirmed}, {mentee_email} has confirmed {mentor_email}'s hours log of {mentee_hours}.
 
@@ -432,15 +404,15 @@ CRLS PathFinders,
 Rehaan Anjaria '25
 Abel Asefaw '25
 """
-        print(n_receiver)
-        print(n_subject)
-        print(n_body)
+        # print(n_receiver)
+        # print(n_subject)
+        # print(n_body)
         send_mail(n_receiver, n_subject, n_body)
 
         mentor_id = get_el_id("Mentors", mentee_log.mentor_email)
         coll_id = get_collection_id("Mentors", mentor_id)
-        add_id = add_redis_collection_id("Mentors", coll_id, mentor_id=mentor_id)
-        print(add_id)
+        add_redis_collection_id("Mentors", coll_id, mentor_id=mentor_id)
+        # print(add_id)
 
-        return {"status": 0}
-    return {"status": -1, "error_message": "confirm came back false (0)"}
+        return {"status": 9}
+    return {"status": -9.3}

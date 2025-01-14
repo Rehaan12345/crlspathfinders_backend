@@ -9,13 +9,25 @@ from fastapi.responses import StreamingResponse
 from typing import List, Annotated
 from datetime import timedelta
 from pydantic import BaseModel
-from models.model import get_collection_id, get_collection, get_sub_collection, remove_id, get_collection_python
+from models.model import (
+    get_collection_id,
+    get_collection,
+    get_sub_collection,
+    remove_id,
+    get_collection_python,
+)
 from routers import user, club, mentor, peermentor, allinfo, libraryinfo
 from requests_cache import CachedSession
 from dotenv import load_dotenv
 from sendmail import send_mail
 from upstash_redis import Redis
-from models.redismodel import get_redis_collection, add_redis_collection, get_redis_collection_id, add_redis_collection_id, delete_redis_data
+from models.redismodel import (
+    get_redis_collection,
+    add_redis_collection,
+    get_redis_collection_id,
+    add_redis_collection_id,
+    delete_redis_data,
+)
 from fastapi.responses import JSONResponse
 
 
@@ -59,7 +71,7 @@ origins = [
     "https://crlspathfinders-backend.vercel.app/",
     "https://crlspathfinders-backend.vercel.app/cache/Mentors",
     "https://crlspathfinders-frontend-44w5k1duv-rehaan12345s-projects.vercel.app/",
-    "https://crlspathfinders-frontend-exrq8i8v2-rehaan12345s-projects.vercel.app/"
+    "https://crlspathfinders-frontend-exrq8i8v2-rehaan12345s-projects.vercel.app/",
 ]
 
 app.add_middleware(
@@ -101,7 +113,10 @@ app.include_router(libraryinfo.router)
 #     data = cached_data.get(f"{curr_url}read/{collection}")
 #     return data.json()
 
-def get_current_username(credentials: Annotated[HTTPBasicCredentials, Depends(security)]):
+
+def get_current_username(
+    credentials: Annotated[HTTPBasicCredentials, Depends(security)]
+):
     current_username_bytes = credentials.username.encode("utf8")
     correct_username_bytes = bytes(os.environ.get("AUTH_USERNAME"), "utf-8")
     is_correct_username = secrets.compare_digest(
@@ -120,31 +135,40 @@ def get_current_username(credentials: Annotated[HTTPBasicCredentials, Depends(se
         )
     return credentials.username
 
+
 @app.get("/users/me")
 def read_current_user(username: Annotated[str, Depends(get_current_username)]):
     return {"username": username}
+
 
 @app.get("/")
 def home(username: Annotated[str, Depends(get_current_username)]):
     print(username)
     return {"status": "rehaan"}
 
+
 @app.get("/add/{num1}/{num2}")
-def add_nums(num1: int, num2: int, username: Annotated[str, Depends(get_current_username)]):
+def add_nums(
+    num1: int, num2: int, username: Annotated[str, Depends(get_current_username)]
+):
     result = num1 + num2
     return {"data": result}
+
 
 @app.get("/testonetwothree")
 def test():
     return {"hello": "world"}
 
+
 @app.get("/read/{collection}/{id}")
-async def read_document(collection: str, id: str, username: Annotated[str, Depends(get_current_username)]):
+async def read_document(
+    collection: str, id: str, username: Annotated[str, Depends(get_current_username)]
+):
     coll_id = get_redis_collection_id(collection, id)
     status = coll_id["status"]
-    if status == 0: # Found
+    if status == 0:  # Found
         return {"status": 0, "collid": coll_id["target_val"]}
-    if status == -4: # No collection id found
+    if status == -4:  # No collection id found
         coll_id = get_collection_id(collection, id)
         add_id = add_redis_collection_id(collection, coll_id)
         if add_id["status"] == 0:
@@ -152,9 +176,12 @@ async def read_document(collection: str, id: str, username: Annotated[str, Depen
         return {"status": -1, "error_message": add_id["error_message"]}
     if status == -1:
         return {"status": -1, "error_message": coll_id["error_message"]}
-    
+
+
 @app.get("/read/{collection}")
-async def read_collection(collection: str, username: Annotated[str, Depends(get_current_username)]):
+async def read_collection(
+    collection: str, username: Annotated[str, Depends(get_current_username)]
+):
     try:
         redis_collection = get_redis_collection(collection)
         status = redis_collection["status"]
@@ -184,6 +211,7 @@ async def read_collection(collection: str, username: Annotated[str, Depends(get_
     except Exception as e:
         # logging.critical(f"Critical error in read_collection function for '{collection}': {str(e)}")
         return {"status": -1, "error_message": "An unexpected error occurred."}
+
 
 # @app.get("/read/{collection}")
 # async def read_collection(collection: str):
@@ -215,17 +243,27 @@ async def read_collection(collection: str, username: Annotated[str, Depends(get_
 #         headers = {"Cache-Control": "no-store"}  # Avoid caching errors
 #         return JSONResponse(content=response, headers=headers)
 
+
 # Read a sub-collection
 @app.get("/read/{collection}/{id}/{subcollection}")
-async def read_sub_collection(collection: str, id: str, subcollection: str, username: Annotated[str, Depends(get_current_username)]):
+async def read_sub_collection(
+    collection: str,
+    id: str,
+    subcollection: str,
+    username: Annotated[str, Depends(get_current_username)],
+):
     return get_sub_collection(collection, id, subcollection)
+
 
 # Delete (delete the document itself, not the info, so only need the document parameter):
 @app.get("/delete/{collection}/{id}")
-async def delete_info(collection: str, id: str, username: Annotated[str, Depends(get_current_username)]):
+async def delete_info(
+    collection: str, id: str, username: Annotated[str, Depends(get_current_username)]
+):
     del_redis = delete_redis_data(collection, id)
     print(del_redis)
     return remove_id(collection, id)
+
 
 class SendMassEmail(BaseModel):
     collection: str
@@ -233,8 +271,11 @@ class SendMassEmail(BaseModel):
     body: str
     recipients: List[str]
 
+
 @app.post("/emailall/")
-def email_all(email: SendMassEmail, username: Annotated[str, Depends(get_current_username)]):
+def email_all(
+    email: SendMassEmail, username: Annotated[str, Depends(get_current_username)]
+):
     sendees = get_collection_python(email.collection)
     emails = []
     if email.collection == "Rehaan":
@@ -242,7 +283,7 @@ def email_all(email: SendMassEmail, username: Annotated[str, Depends(get_current
         send_mail("25ranjaria@cpsd.us", email.subject, email.body)
         return {"status": 0}
     if email.collection == "Clubs":
-        for s in sendees: 
+        for s in sendees:
             emails.append(s["president_email"])
             if len(s["vice_presidents_emails"]) > 0:
                 for v in s["vice_presidents_emails"]:
@@ -252,16 +293,23 @@ def email_all(email: SendMassEmail, username: Annotated[str, Depends(get_current
             return {"status": 0}
         except Exception as e:
             return {"status": -1, "error_message": e}
-    else:             
-        for s in sendees: emails.append(s["email"])
+    else:
+        for s in sendees:
+            emails.append(s["email"])
         try:
             send_mail(emails, email.subject, email.body)
             return {"status": 0}
         except Exception as e:
             return {"status": -1, "error_message": e}
-        
+
+
 @app.get("/emailone/{subject}/{body}/{receiver}")
-def email_one(subject: str, body: str, receiver: str, username: Annotated[str, Depends(get_current_username)]):
+def email_one(
+    subject: str,
+    body: str,
+    receiver: str,
+    username: Annotated[str, Depends(get_current_username)],
+):
     try:
         send_mail(receiver, subject, body)
         print("sent email successfully")
